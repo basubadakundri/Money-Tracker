@@ -58,9 +58,10 @@ try {
 (function(){
 var KEY = "ledger.pro.v1";
 var CATS = {
-  expense: { Housing:"🏠", Food:"🍽️", Transport:"🚗", Bills:"💡", Shopping:"🛍️", Health:"💊", Fun:"🎬", Travel:"✈️", Interest:"🏦", Other:"📦" },
+  expense: { Food:"🍽️", Fuel:"⛽", Transport:"🚗", Housing:"🏠", Bills:"💡", Shopping:"🛍️", Fitness:"🏋️", Health:"💊", Fun:"🎬", Travel:"✈️", Interest:"🏦", Other:"📦" },
   income: { Salary:"💼", Freelance:"💻", Investments:"📈", Gift:"🎁", Other:"💰" }
 };
+var MODES = ["UPI", "Card", "Cash", "Bank"];
 var COL = ["#5b45e0","#0f9d76","#e5484d","#f5a524","#0ea5e9","#d946ef","#84cc16","#f97316","#64748b"];
 var LOC = { INR:"en-IN", USD:"en-US", EUR:"de-DE", GBP:"en-GB" };
 
@@ -139,14 +140,15 @@ function gen(){
     for(;;){
       var m = addM(r.gen,1), d = m+"-"+p(Math.min(r.day,28));
       if(d > t) break;
-      S.tx.push({ id:uid()+S.tx.length, type:r.type, amt:r.amt, cat:r.cat, note:r.note, date:d, rid:r.id });
+      S.tx.push({ id:uid()+S.tx.length, type:r.type, amt:r.amt, cat:r.cat, mode:r.mode||"UPI", note:r.note, date:d, rid:r.id });
       r.gen = m;
     }
   });
 }
 
 function txRow(x,act){
-  return '<div class="li"><span class="ic '+x.type+'">'+icon(x.type,x.cat)+'</span><div class="mt"><b>'+e(x.note||x.cat)+'</b><small>'+e(x.cat)+' · '+fd(x.date)+(x.rid?' · repeats':'')+'</small></div><span class="am '+x.type+'">'+(x.type==="income"?"+":"−")+$m(x.amt)+'</span>'+(act?'<button class="ib" data-act="edit" data-id="'+x.id+'" aria-label="Edit">✎</button><button class="ib" data-act="del" data-id="'+x.id+'" aria-label="Delete">✕</button>':'')+'</div>';
+  var modeTag = x.mode ? ' · '+e(x.mode) : '';
+  return '<div class="li"><span class="ic '+x.type+'">'+icon(x.type,x.cat)+'</span><div class="mt"><b>'+e(x.note||x.cat)+'</b><small>'+e(x.cat)+modeTag+' · '+fd(x.date)+(x.rid?' · repeats':'')+'</small></div><span class="am '+x.type+'">'+(x.type==="income"?"+":"−")+$m(x.amt)+'</span>'+(act?'<button class="ib" data-act="edit" data-id="'+x.id+'" aria-label="Edit">✎</button><button class="ib" data-act="del" data-id="'+x.id+'" aria-label="Delete">✕</button>':'')+'</div>';
 }
 
 function bRow(c,l,s){
@@ -181,7 +183,7 @@ function vOv(){
 }
 
 function txList(){
-  var q = V.q.toLowerCase(), a = inM(V.month).filter(function(x){ return(V.ft==="all"||x.type===V.ft)&&(V.fc==="all"||x.cat===V.fc)&&(!q||(x.note+" "+x.cat).toLowerCase().indexOf(q)>-1); }).sort(function(x,y){ return y.date.localeCompare(x.date)||y.id-x.id; });
+  var q = V.q.toLowerCase(), a = inM(V.month).filter(function(x){ return(V.ft==="all"||x.type===V.ft)&&(V.fc==="all"||x.cat===V.fc)&&(!q||(x.note+" "+x.cat+" "+(x.mode||"")).toLowerCase().indexOf(q)>-1); }).sort(function(x,y){ return y.date.localeCompare(x.date)||y.id-x.id; });
   var g = "", o = "";
   a.forEach(function(x){ var l = dl(x.date); if(l!==g){ g=l; o+='<div class="gh">'+l+'</div>'; } o += txRow(x,1); });
   return o || '<p class="empty">No transactions found for this month.</p>';
@@ -189,7 +191,7 @@ function txList(){
 
 function vTx(){
   var all = Object.keys(CATS.expense).concat(Object.keys(CATS.income).filter(function(c){ return !CATS.expense[c]; }));
-  return '<div class="card"><div class="tb"><input id="q" type="search" placeholder="Search transactions" value="'+e(V.q)+'" aria-label="Search"><select id="ft" aria-label="Type">'+[["all","All types"],["income","Income"],["expense","Expenses"]].map(function(o){ return'<option value="'+o[0]+'"'+(V.ft===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+'</select><select id="fc" aria-label="Category"><option value="all">All categories</option>'+all.map(function(c){ return'<option'+(V.fc===c?" selected":"")+'>'+c+'</option>'; }).join("")+'</select></div><div id="txl">'+txList()+'</div></div>'+
+  return '<div class="card"><div class="tb"><input id="q" type="search" placeholder="Search notes, categories, UPI..." value="'+e(V.q)+'" aria-label="Search"><select id="ft" aria-label="Type">'+[["all","All types"],["income","Income"],["expense","Expenses"]].map(function(o){ return'<option value="'+o[0]+'"'+(V.ft===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("")+'</select><select id="fc" aria-label="Category"><option value="all">All categories</option>'+all.map(function(c){ return'<option'+(V.fc===c?" selected":"")+'>'+c+'</option>'; }).join("")+'</select></div><div id="txl">'+txList()+'</div></div>'+
   (S.rules.length?'<div class="card"><h2>Recurring</h2>'+S.rules.map(function(r){ return'<div class="li"><span class="ic '+r.type+'">'+icon(r.type,r.cat)+'</span><div class="mt"><b>'+e(r.note||r.cat)+'</b><small>Monthly on day '+r.day+'</small></div><span class="am '+r.type+'">'+$m(r.amt)+'</span><button class="ib" data-act="delr" data-id="'+r.id+'" aria-label="Stop repeating">✕</button></div>'; }).join("")+'</div>':'');
 }
 
@@ -235,8 +237,18 @@ function vSe(){
   }
 
   return '<div class="card"><h2>Account & Cloud Sync</h2>'+authHtml+'</div>'+
-  '<div class="card"><h2>Preferences</h2><label>Currency<select id="cur">'+Object.keys(LOC).map(function(c){ return'<option'+(c===S.cur?" selected":"")+'>'+c+'</option>'; }).join("")+'</select></label><div class="row"><button class="chip" data-act="theme">Toggle light / dark theme</button></div></div>'+
-  '<div class="card"><h2>Backup & Offline Storage</h2><p class="mu">Export an offline JSON file anytime or restore from a past backup.</p><div class="row wrap"><button class="chip" data-act="export">Export backup</button><button class="chip" data-act="import">Import backup</button><button class="chip dg" data-act="reset">Reset all data</button></div></div>';
+  '<div class="card"><h2>Preferences</h2>'+
+    '<label>Currency<select id="cur">'+Object.keys(LOC).map(function(c){ return'<option'+(c===S.cur?" selected":"")+'>'+c+'</option>'; }).join("")+'</select></label>'+
+    '<label>Appearance / Theme'+
+      '<select id="theme-select">'+
+        '<option value=""'+(!S.theme?" selected":"")+'>Auto (System Default)</option>'+
+        '<option value="light"'+(S.theme==="light"?" selected":"")+'>Light Liquid Glass</option>'+
+        '<option value="dark"'+(S.theme==="dark"?" selected":"")+'>Dark Liquid Glass</option>'+
+        '<option value="neon"'+(S.theme==="neon"?" selected":"")+'>Neon Emerald</option>'+
+      '</select>'+
+    '</label>'+
+  '</div>'+
+  '<div class="card"><h2>Backup & Export</h2><p class="mu">Download a spreadsheet CSV or export a full JSON backup file.</p><div class="row wrap"><button class="chip" data-act="csv">⬇ Export CSV</button><button class="chip" data-act="export">Export JSON</button><button class="chip" data-act="import">Import JSON</button><button class="chip dg" data-act="reset">Reset all data</button></div></div>';
 }
 
 // ==================== AUTH & SYNC ENGINE ====================
@@ -375,24 +387,26 @@ function closeM(){ $("#m").hidden = true; $("#m").innerHTML = ""; }
 function opts(t,sel){ return Object.keys(CATS[t]).map(function(c){ return'<option'+(c===sel?" selected":"")+'>'+c+'</option>'; }).join(""); }
 
 function txModal(id){
-  var x = S.tx.find(function(t){ return t.id==id; }) || { type:"expense", date:td() };
+  var x = S.tx.find(function(t){ return t.id==id; }) || { type:"expense", date:td(), mode:"UPI" };
   modal(id?"Edit transaction":"Add transaction",
     '<div class="seg"><button data-act="mtype" data-t="expense" aria-pressed="'+(x.type==="expense")+'">Expense</button><button data-act="mtype" data-t="income" aria-pressed="'+(x.type==="income")+'">Income</button></div>'+
-    '<label>Amount<input id="fa" type="number" inputmode="decimal" min="0" step="0.01" value="'+(x.amt||"")+'"></label>'+
-    '<label>Category<select id="mc">'+opts(x.type,x.cat)+'</select></label>'+
+    '<label>Amount<input id="fa" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" value="'+(x.amt||"")+'"></label>'+
+    '<div class="q-chips"><button type="button" class="q-chip" data-act="qamt" data-v="100">+100</button><button type="button" class="q-chip" data-act="qamt" data-v="500">+500</button><button type="button" class="q-chip" data-act="qamt" data-v="1000">+1,000</button><button type="button" class="q-chip" data-act="qamt" data-v="2000">+2,000</button></div>'+
+    '<div class="g2" style="margin:0;gap:10px"><label>Category<select id="mc">'+opts(x.type,x.cat)+'</select></label>'+
+    '<label>Mode<select id="mm">'+MODES.map(function(m){ return '<option'+(m===(x.mode||"UPI")?" selected":"")+'>'+m+'</option>'; }).join("")+'</select></label></div>'+
     '<label>Date<input id="fd" type="date" value="'+x.date+'"></label>'+
-    '<label>Note<input id="fn" maxlength="60" placeholder="Optional" value="'+e(x.note||"")+'"></label>'+
+    '<label>Note<input id="fn" maxlength="60" placeholder="Optional description..." value="'+e(x.note||"")+'"></label>'+
     (id ? '' : '<label class="ck"><input type="checkbox" id="fr"> Repeat every month</label>')+
     '<p class="err" id="er"></p>',
     function(){
       var t = $("#m").dataset.t || x.type, amt = parseFloat($("#fa").value), d = $("#fd").value;
       if(!(amt>0) || !d){ $("#er").textContent = "Enter an amount above 0 and pick a date."; return false; }
-      var o = { type:t, amt:Math.round(amt*100)/100, cat:$("#mc").value, date:d, note:$("#fn").value.trim() };
+      var o = { type:t, amt:Math.round(amt*100)/100, cat:$("#mc").value, mode:$("#mm").value, date:d, note:$("#fn").value.trim() };
       if(id) Object.assign(x,o);
       else {
         o.id = uid();
         if($("#fr") && $("#fr").checked){
-          var r = { id:uid(), type:t, amt:o.amt, cat:o.cat, note:o.note, day:+d.slice(8), gen:d.slice(0,7) };
+          var r = { id:uid(), type:t, amt:o.amt, cat:o.cat, mode:o.mode, note:o.note, day:+d.slice(8), gen:d.slice(0,7) };
           S.rules.push(r); o.rid = r.id;
         }
         S.tx.push(o);
@@ -439,7 +453,7 @@ function fundModal(id){
 function debtModal(id){
   var d = S.debts.find(function(x){ return x.id==id; }) || { kind:"owe" };
   modal(id?"Edit loan":"New loan or lending",
-    '<label>Type<select id="dk"><option value="owe"'+(d.kind==="owe"?" selected":"")+'>I owe (Loan, credit card)</option><option value="lent"'+(d.kind==="lent"?" selected":"")+'>I lent (Owed to me)</option></select></label><label>Person or lender<input id="dw" maxlength="40" placeholder="e.g. Home loan, Rahul" value="'+e(d.who||"")+'"></label><label>Amount<input id="da" type="number" min="1" value="'+(d.amt||"")+'"></label><label>Interest rate, % a year (optional)<input id="dr" type="number" min="0" step="0.01" value="'+(d.rate||"")+'"></label><label>Term in months (optional)<input id="dt" type="number" min="1" value="'+(d.term||"")+'"></label><label>Next due date (optional)<input id="dd" type="date" value="'+(d.due||"")+'"></label><label>Note<input id="dn" maxlength="60" value="'+e(d.note||"")+'"></label><p class="err" id="er"></p>',
+    '<label>Type<select id="dk"><option value="owe"'+(d.kind==="owe"?" selected":"")+'>I owe (Loan, credit card)</option><option value="lent"'+(d.kind==="lent"?" selected":"")+'>I lent (Owed to me)</option></select></label><label>Person or lender<input id="dw" maxlength="40" placeholder="e.g. Home loan, Friend" value="'+e(d.who||"")+'"></label><label>Amount<input id="da" type="number" min="1" value="'+(d.amt||"")+'"></label><label>Interest rate, % a year (optional)<input id="dr" type="number" min="0" step="0.01" value="'+(d.rate||"")+'"></label><label>Term in months (optional)<input id="dt" type="number" min="1" value="'+(d.term||"")+'"></label><label>Next due date (optional)<input id="dd" type="date" value="'+(d.due||"")+'"></label><label>Note<input id="dn" maxlength="60" value="'+e(d.note||"")+'"></label><p class="err" id="er"></p>',
     function(){
       var w = $("#dw").value.trim(), a = parseFloat($("#da").value), rt = parseFloat($("#dr").value)||0, n = parseInt($("#dt").value)||0;
       if(!w || !(a>0)){ $("#er").textContent = "Add a name and an amount above 0."; return false; }
@@ -470,17 +484,35 @@ function payModal(id){
   );
 }
 
+function exportCSV(){
+  if(!S.tx.length){ toast("No transactions to export"); return; }
+  var rows = ["Date,Type,Category,Mode,Amount,Note"];
+  S.tx.slice().sort(function(a,b){ return b.date.localeCompare(a.date); }).forEach(function(x){
+    rows.push([x.date, x.type, '"'+x.cat+'"', '"'+(x.mode||"UPI")+'"', x.amt, '"'+(x.note||"").replace(/"/g,'""')+'"'].join(","));
+  });
+  var blob = new Blob([rows.join("\n")], { type:"text/csv;charset=utf-8;" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "Ledger-Transactions-"+td()+".csv";
+  a.click();
+  toast("CSV downloaded!");
+}
+
 // ==================== EVENT LISTENERS ====================
 document.addEventListener("click",function(ev){
   var el = ev.target.closest("[data-act],[data-v]");
   if(!el){ if(ev.target.id==="m") closeM(); return; }
   
-  if(el.dataset.v){ V.view = el.dataset.v; render(); scrollTo(0,0); return; }
+  if(el.dataset.v && !el.dataset.act){ V.view = el.dataset.v; render(); scrollTo(0,0); return; }
   
   var a = el.dataset.act, id = el.dataset.id;
   if(a==="pm"||a==="nm"){ V.month = addM(V.month, a==="pm"?-1:1); render(); }
   else if(a==="add") txModal();
   else if(a==="edit") txModal(id);
+  else if(a==="qamt"){
+    var inp = $("#fa");
+    if(inp) inp.value = (parseFloat(inp.value)||0) + (+el.dataset.v);
+  }
   else if(a==="del"){
     var rw = el.closest(".li"); if(rw) rw.classList.add("out");
     setTimeout(function(){ S.tx = S.tx.filter(function(x){ return x.id != id; }); persist("Deleted"); }, rw ? 220 : 0);
@@ -509,6 +541,7 @@ document.addEventListener("click",function(ev){
   else if(a==="setview"){ V.view = "set"; render(); }
   else if(a==="login"){ loginGoogle(); }
   else if(a==="logout"){ logoutGoogle(); }
+  else if(a==="csv"){ exportCSV(); }
   else if(a==="export"){
     modal("Export backup",'<p class="mu">Copy this text to keep it safe.</p><textarea readonly id="ex">'+e(JSON.stringify(S))+'</textarea>',function(){
       var ta = $("#ex");
@@ -551,6 +584,12 @@ document.addEventListener("change",function(ev){
   var t = ev.target;
   if(t.id==="ft"||t.id==="fc"){ V[t.id] = t.value; $("#txl").innerHTML = txList(); }
   else if(t.id==="cur"){ S.cur = t.value; mk(); persist(); }
+  else if(t.id==="theme-select"){
+    S.theme = t.value;
+    applyTheme();
+    save();
+    toast("Theme updated!");
+  }
 });
 
 document.addEventListener("keydown",function(ev){
