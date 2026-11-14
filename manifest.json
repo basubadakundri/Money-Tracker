@@ -1,0 +1,18 @@
+{
+  "name": "Ledger – Budget & Cloud Tracker",
+  "short_name": "Ledger",
+  "description": "Fast, liquid-glass personal budget and cloud finance tracker",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0f17",
+  "theme_color": "#e6ecf8",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💳</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
