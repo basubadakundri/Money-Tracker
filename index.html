@@ -919,12 +919,28 @@ function exportCSV(){
   toast("CSV downloaded!");
 }
 
+function scrollMainToTop(){
+  var m = $("#main");
+  if(m){
+    if(m.scrollTo) m.scrollTo({ top: 0, behavior: "instant" });
+    else m.scrollTop = 0;
+  }
+  window.scrollTo(0, 0);
+}
+
 // ==================== EVENT LISTENERS ====================
 document.addEventListener("click",function(ev){
   var el = ev.target.closest("[data-act],[data-v]");
   if(!el){ if(ev.target.id==="m") closeM(); return; }
   
-  if(el.dataset.v && !el.dataset.act){ V.view = el.dataset.v; render(); scrollTo(0,0); return; }
+  if(el.dataset.v && !el.dataset.act){
+    if(V.view !== el.dataset.v){
+      V.view = el.dataset.v;
+      render();
+      scrollMainToTop();
+    }
+    return;
+  }
   
   var a = el.dataset.act, id = el.dataset.id;
   if(a==="pm"||a==="nm"){ V.month = addM(V.month, a==="pm"?-1:1); render(); }
@@ -941,7 +957,7 @@ document.addEventListener("click",function(ev){
     var rw = el.closest(".swipe-wrap, .li"); if(rw) rw.classList.add("out");
     setTimeout(function(){ S.tx = S.tx.filter(function(x){ return x.id != id; }); persist("Deleted"); }, rw ? 220 : 0);
   }
-  else if(a==="slice"){ V.view="tx"; V.ft="expense"; V.fc=el.dataset.c; V.q=""; render(); scrollTo(0,0); }
+  else if(a==="slice"){ V.view="tx"; V.ft="expense"; V.fc=el.dataset.c; V.q=""; render(); scrollMainToTop(); }
   else if(a==="trend"){ V.trendMode = el.dataset.m; render(); }
   else if(a==="delr"){ if(confirm("Stop recurring entry?")){ S.rules = S.rules.filter(function(r){ return r.id!=id; }); persist("Rule stopped"); } }
   else if(a==="blim") limModal(el.dataset.c);
@@ -963,7 +979,7 @@ document.addEventListener("click",function(ev){
     var dk = S.theme ? S.theme==="dark" : matchMedia("(prefers-color-scheme: dark)").matches;
     S.theme = dk ? "light" : "dark"; applyTheme(); save();
   }
-  else if(a==="setview"){ V.view = "set"; render(); }
+  else if(a==="setview"){ if(V.view!=="set"){ V.view = "set"; render(); scrollMainToTop(); } }
   else if(a==="login"){ loginGoogle(); }
   else if(a==="logout"){ logoutGoogle(); }
   else if(a==="csv"){ exportCSV(); }
@@ -1142,7 +1158,7 @@ function pickNavFromPoint(x, y){
     V.view = btn.dataset.v;
     haptic("light");
     render();
-    scrollTo(0, 0);
+    scrollMainToTop();
   }
 }
 
