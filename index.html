@@ -49,17 +49,26 @@ const firebaseConfig = {
 };
 
 let auth = null, db = null, currentUser = null, unsubSnapshot = null;
-let syncStatus = "offline";
+let syncStatus = "offline", lastSyncError = "";
 
 try {
   if (firebaseConfig.apiKey) {
     firebase.initializeApp(firebaseConfig);
     auth = firebase.auth();
     db = firebase.firestore();
-    db.enablePersistence({ synchronizeTabs: true }).catch(function(){});
+    try {
+      db.settings({ experimentalAutoDetectLongPolling: true });
+    } catch(e){}
+    try {
+      auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(){});
+    } catch(e){}
+    db.enablePersistence().catch(function(err){
+      console.warn("Firestore persistence notice:", err ? err.code : err);
+    });
   }
 } catch(err) {
   console.warn("Firebase initialization warning:", err);
+  lastSyncError = err ? (err.message || String(err)) : "Init failed";
 }
 
 // ==================== APP ENGINE ====================
@@ -243,13 +252,17 @@ function saveCloud(){
     .then(function(){
       lastPushedKey = sentKey;
       syncStatus = "synced";
+      lastSyncError = "";
       updateSyncBadge();
+      if(V.view === "set") render();
     })
     .catch(function(err){
       console.error("Cloud save failed:", err);
       lastPushedKey = "";
       syncStatus = "offline";
+      lastSyncError = err ? (err.message || err.code) : "Cloud save failed";
       updateSyncBadge();
+      if(V.view === "set") render();
     });
   }, 400);
 }
@@ -543,14 +556,23 @@ function vSe(){
   if (!auth) {
     authHtml = '<p class="err">Firebase is not configured yet.</p>';
   } else if (currentUser) {
+    var statusText = syncStatus === "synced" ? "Cloud synced ✓" : syncStatus === "syncing" ? "Syncing in progress…" : "Offline / Unreachable";
+    var dotClass = syncStatus === "synced" ? "on" : syncStatus === "syncing" ? "syncing" : "";
     authHtml = '<div class="user-card">'+
       (safePhoto(currentUser.photoURL) ? '<img src="'+safePhoto(currentUser.photoURL)+'" alt="">' : '<div class="ic income">👤</div>')+
-      '<div style="flex:1;min-width:0"><b>'+e(currentUser.displayName||"User")+'</b><small>'+e(currentUser.email)+'</small></div>'+
+      '<div style="flex:1;min-width:0"><b>'+e(currentUser.displayName||"User")+'</b><small style="display:block">'+e(currentUser.email)+'</small><span style="font-size:0.75rem;margin-top:2px;display:inline-block"><span class="sync-dot '+dotClass+'"></span> '+statusText+'</span></div>'+
       '<button class="chip dg" data-act="logout">Sign out</button>'+
-    '</div><p class="mu">Your data is synced automatically across all your devices.</p>';
+    '</div>'+
+    '<div class="row" style="margin-top:10px;gap:10px;align-items:center">'+
+      '<button class="btn" data-act="syncnow" style="font-size:0.86rem;padding:8px 18px">☁ Sync Now</button>'+
+      (lastSyncError ? '<span class="bdg" style="font-size:0.72rem">'+e(lastSyncError)+'</span>' : '<span class="mu" style="font-size:0.76rem">Connected to Firestore</span>')+
+    '</div>'+
+    '<p class="mu" style="font-size:0.8rem;margin-top:10px">Your transactions sync securely via Google Cloud Firestore across all your phones and computers.</p>';
   } else {
-    authHtml = '<p class="mu">Sign in with Google to sync your transactions across devices.</p>'+
-      '<div class="row"><button class="btn" data-act="login">Sign in with Google</button></div>';
+    authHtml = '<p class="mu">Sign in with Google to sync your transactions across all your mobile and desktop devices.</p>'+
+      '<div class="row" style="margin-top:12px"><button class="btn" data-act="login">Sign in with Google</button></div>'+
+      (lastSyncError ? '<div style="margin-top:12px;padding:10px 14px;border-radius:14px;background:var(--exs);color:var(--ex);font-size:0.82rem;font-weight:600">'+e(lastSyncError)+'</div>' : '')+
+      '<p class="mu" style="font-size:0.76rem;margin-top:12px">Current domain: <code>'+window.location.hostname+'</code></p>';
   }
 
   return '<div class="card"><h2>Account & Cloud Sync</h2>'+authHtml+'</div>'+
@@ -640,15 +662,29 @@ function consumeSnap(doc){
 
 function initAuth(){
   if (!auth) return;
-  auth.getRedirectResult().catch(function(err){
+  
+  // 1. Capture redirect sign-in result if returning from a mobile redirect
+  auth.getRedirectResult().then(function(result){
+    if(result && result.user){
+      currentUser = result.user;
+      lastSyncError = "";
+      toast("Signed in as " + (result.user.displayName || result.user.email));
+      syncStatus = "syncing";
+      updateSyncBadge();
+      if(V.view === "set") render();
+    }
+  }).catch(function(err){
     if(!err || err.code==="auth/no-auth-event") return;
-    console.error("Redirect sign-in failed:", err);
-    alert("Sign-in error: " + (err.message || "try again"));
+    console.error("Redirect sign-in notice:", err);
+    handleAuthError(err);
   });
+
+  // 2. Auth state listener
   auth.onAuthStateChanged(function(user){
     var was = currentUser && currentUser.uid;
     currentUser = user;
     if (user) {
+      lastSyncError = "";
       if(was !== user.uid) toast("Signed in as " + (user.displayName || user.email));
       syncStatus = "syncing";
       updateSyncBadge();
@@ -656,11 +692,14 @@ function initAuth(){
       if (unsubSnapshot) unsubSnapshot();
       unsubSnapshot = db.collection("users").doc(user.uid).onSnapshot(function(doc){
         if(!$("#m").hidden){ queuedSnap = snapData(doc); return; }
+        lastSyncError = "";
         consumeSnap(doc);
       }, function(err){
         console.error("Firestore sync error:", err);
+        lastSyncError = err ? (err.message || err.code) : "Sync error";
         syncStatus = "offline";
         updateSyncBadge();
+        if(V.view === "set") render();
       });
 
     } else {
@@ -673,18 +712,49 @@ function initAuth(){
   });
 }
 
-function prefersRedirect(){
-  return matchMedia("(max-width: 820px)").matches || matchMedia("(display-mode: standalone)").matches;
+function handleAuthError(err){
+  var msg = (err && err.message) ? err.message : "Authentication failed";
+  if(err && err.code === "auth/unauthorized-domain"){
+    msg = "This domain (" + window.location.hostname + ") is not authorized in Firebase yet. Add it to Firebase Console -> Authentication -> Settings -> Authorized domains.";
+  }
+  lastSyncError = msg;
+  syncStatus = "offline";
+  updateSyncBadge();
+  if(V.view === "set") render();
+  alert("Sign-in notice: " + msg);
 }
 
 function loginGoogle(){
   if (!auth) return;
   var provider = new firebase.auth.GoogleAuthProvider();
-  if(prefersRedirect()) toast("Opening Google sign-in…");
-  var job = prefersRedirect() ? auth.signInWithRedirect(provider) : auth.signInWithPopup(provider);
-  job.catch(function(err){
-    console.error("Login failed:", err);
-    alert("Sign-in error: " + (err && err.message ? err.message : "try again"));
+  provider.setCustomParameters({ prompt: "select_account" });
+  lastSyncError = "";
+
+  toast("Opening Google Sign-in…");
+
+  // Attempt Popup first on all platforms (bypasses Mobile Safari third-party redirect storage blocking)
+  auth.signInWithPopup(provider).then(function(result){
+    if(result && result.user){
+      currentUser = result.user;
+      lastSyncError = "";
+      toast("Signed in as " + (result.user.displayName || result.user.email));
+      syncStatus = "syncing";
+      updateSyncBadge();
+      render();
+    }
+  }).catch(function(err){
+    console.warn("Popup sign-in notice:", err);
+    if(err && (err.code === "auth/popup-blocked" || err.code === "auth/operation-not-supported-in-this-environment")){
+      toast("Popup blocked, trying redirect…");
+      auth.signInWithRedirect(provider).catch(function(rErr){
+        console.error("Redirect sign-in failed:", rErr);
+        handleAuthError(rErr);
+      });
+    } else if(err && err.code === "auth/unauthorized-domain"){
+      handleAuthError(err);
+    } else if(err && err.code !== "auth/popup-closed-by-user"){
+      handleAuthError(err);
+    }
   });
 }
 
@@ -986,6 +1056,12 @@ document.addEventListener("click",function(ev){
   else if(a==="setview"){ if(V.view!=="set"){ V.view = "set"; render(); scrollMainToTop(); } }
   else if(a==="login"){ loginGoogle(); }
   else if(a==="logout"){ logoutGoogle(); }
+  else if(a==="syncnow"){
+    haptic("light");
+    toast("Syncing with cloud…");
+    lastPushedKey = "";
+    saveCloud();
+  }
   else if(a==="csv"){ exportCSV(); }
   else if(a==="export"){
     modal("Export backup",'<p class="mu">Copy this text to keep it safe.</p><textarea readonly id="ex">'+e(JSON.stringify(S))+'</textarea>',function(){
